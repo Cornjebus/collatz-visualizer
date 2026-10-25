@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Collatz-45 Resonant Driver | Magnetic Vortex Visualizer</title>
+  <style>
+    :root {
+      --bg: #090d16;
+      --card-bg: #111827;
+      --card-border: #1f293d;
+      --cyan: #00f0ff;
+      --cyan-dim: rgba(0, 240, 255, 0.15);
+      --amber: #f59e0b;
+      --green: #10b981;
+      --purple: #8b5cf6;
+      --text: #e2e8f0;
+      --text-muted: #94a3b8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "JetBrains Mono", monospace;
+      padding: 20px;
+      min-height: 100vh;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--card-border);
+      padding-bottom: 16px;
+      margin-bottom: 24px;
+    }
+    h1 {
+      font-size: 1.4rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      color: var(--cyan);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .badge {
+      font-size: 0.75rem;
+      background: var(--cyan-dim);
+      border: 1px solid var(--cyan);
+      color: var(--cyan);
+      padding: 3px 8px;
+      border-radius: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 460px 1fr;
+      gap: 20px;
+    }
+    @media (max-width: 1024px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    }
+    .card-title {
+      font-size: 0.9rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      margin-bottom: 16px;
+      display: flex;
+      justify-content: space-between;
+    }
+    .toroid-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      position: relative;
+    }
+    canvas#toroidCanvas {
+      width: 400px;
+      height: 400px;
+      border-radius: 50%;
+      background: radial-gradient(circle, #0e1726 0%, #080c14 70%);
+      box-shadow: inset 0 0 40px rgba(0,0,0,0.8);
+    }
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-top: 20px;
+    }
+    .stat-box {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 12px;
+      text-align: center;
+    }
+    .stat-label { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; }
+    .stat-val { font-size: 1.1rem; font-weight: 700; color: #fff; margin-top: 4px; font-family: monospace; }
+    
+    .scope-card {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      }
+    canvas#scopeCanvas {
+      width: 100%;
+      height: 240px;
+      background: #060910;
+      border-radius: 8px;
+      border: 1px solid var(--cyan-border);
+    }
+    
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+      margin-top: 10px;
+    }
+     .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    label { font-size: 0.8rem; color: var(--text-muted); }
+    input[type=range] { accent-color: var(--cyan); }
+    button {
+      background: var(--cyan);
+      color: #041017;
+      font-weight: 700;
+      padding: 8px 16px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    button:hover {
+      box-shadow: 0 0 15px rgba(0, 240, 255, 0.6);
+    }
+    button.secondary {
+      background: transparent;
+      border: 1px solid var(--card-border);
+      color: var(--text);
+    }
+    button.secondary:hover {
+      border-color: var(--cyan);
+      color: var(--cyan);
+      box-shadow: none;
+    }
+    .legend {
+      display: flex;
+      gap: 16px;
+      margin-top: 12px;
+      font-size: 0.75rem;
+      justify-content: center;
+    }
+    .legend-item { display: flex; align-items: center; gap: 6px; }
+    .legend-dot { width: 10px; height: 10px; border-radius: 2px; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m12 2 4 10-4 10-4-10z"/></svg>
+      COLLATZ-45 RESONANT DRIVER
+    </h1>
+    <div style="display: flex; gap: 12px; align-items: center;">
+      <span class="badge" id="vortexStatus">VORTEX: LOCKED</span>
+      <span class="badge" style="border-color: var(--amber); color: var(--amber);">INTENT: 0x6DAE0002</span>
+    </div>
+  </header>
+
+  <div class="grid">
+    <!-- Toroid Physical Visualization -->
+    <div class="card">
+      <div class="card-title">
+        <span>8-Fold Toroid Magnetic Chamber</span>
+        <span id="rotationRate">0.0 RPM</span>
+      </div>
+      <div class="toroid-container">
+        <canvas id="toroidCanvas" width="800" height="800"></canvas>
+      </div>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#00f0ff;"></div> State 4 (Charge)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#f59e0b;"></div> State 2 (Slide)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#10b981;"></div> State 1 (Dock)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#1f293d;"></div> Idle / Cool</div>
+      </div>
+    </div>
+
+    <!-- Oscilloscope & Controls -->
+    <div class="card scope-card">
+      <div class="card-title">
+        <span>Multi-Channel Gate Timing Trace (Pins 2–9)</span>
+        <span id="cycleTime">T: 0 ns</span>
+      </div>
+      <canvas id="scopeCanvas" width="1000" height="360"></canvas>
+
+      <div class="stats-row">
+        <div class="stat-box">
+          <div class="stat-label">Net Flux |B_net|</div>
+          <div class="stat-val" id="valFlux">0.000 T</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Vortex Angle</div>
+          <div class="stat-val" id="valAngle">0.0°</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Thermal Ripple</div>
+          <div class="stat-val" style="color: var(--green);" id="valRipple">0.12%</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Core Material</div>
+          <div class="stat-val" style="font-size: 0.9rem;" id="valCore">NiZn Type 61</div>
+        </div>
+      </div>
+
+      <div class="controls">
+        <div class="control-group">
+          <label>Simulation Speed (<span id="speedDisplay">1.0x</span>)</label>
+          <input type="range" id="speedSlider" min="0.1" max="3" step="0.1" value="1.0">
+        </div>
+        <div class="control-group">
+          <label>Base Clock (ns scale)</label>
+          <input type="range" id="tickSlider" min="10" max="100" step="5" value="50">
+        </div>
+        <div class="control-group" style="justify-content: flex-end;">
+          <div style="display: flex; gap: 8px;">
+            <button id="btnPlay">PAUSE</button>
+            <button id="btnChord" class="secondary">TOGGLE CHORD</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const CHANNELS = 8;
+    const PINS = [2, 3, 4, 5, 6, 7, 8, 9];
+    const NAMES = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+    const INTENT_CHORD = 0x6DAE0002;
+    
+    let isRunning = true;
+    let chordEnabled = true;
+    let simSpeed = 1.0;
+    let baseTicks = 50;
+    let timeTick = 0;
+    let totalRotations = 0;
+    let lastAngle = 0;
+
+    const toroidCanvas = document.getElementById("toroidCanvas");
+    const tCtx = toroidCanvas.getContext("2d");
+    const scopeCanvas = document.getElementById("scopeCanvas");
+    const sCtx = scopeCanvas.getContext("2d");
+
+    function getChannelState(channel, t) {
+      const jitter = (chordEnabled && ((INTENT_CHORD >> channel) & 0x1)) ? 10 : 0;
+      const scale = Math.floor((baseTicks + jitter) / 8);
+      const tPulse = 7 * scale;
+      const cycleLength = tPulse * CHANNELS;
+      const offset = channel * tPulse;
+      const loc = (t - offset + cycleLength * 1000) % cycleLength;
+
+      if (loc < 4 * scale) return { state: 4, label: "4", color: "#00f0ff", mag: 1.0 };
+      if (loc < 6 * scale) return { state: 2, label: "2", color: "#f59e0b", mag: 0.3 };
+      if (loc < 7 * scale) return { state: 1, label: "1", color: "#10b981", mag: 0.8 };
+      return { state: 0, label: "0", color: "#1f293d", mag: 0.0 };
+    }
+
+    function drawToroid() {
+      const w = toroidCanvas.width;
+      const h = toroidCanvas.height;
+      const cx = w / 2;
+      const cy = h / 2;
+      const rOuter = 280;
+      const rInner = 160;
+      const rCoils = 220;
+
+      tCtx.clearRect(0, 0, w, h);
+
+      // Core Ring
+      tCtx.beginPath();
+      tCtx.arc(cx, cy, rOuter, 0, Math.PI * 2);
+      tCtx.arc(cx, cy, rInner, 0, Math.PI * 2, true);
+      tCtx.fillStyle = "#162032";
+      tCtx.fill();
+      tCtx.lineWidth = 4;
+      tCtx.strokeStyle = "#27354f";
+      tCtx.stroke();
+
+      let bx = 0, by = 0;
+
+      // Draw 8 Coils at 45 degrees
+      for (let i = 0; i < CHANNELS; i++) {
+        const theta = (i * 45 - 90) * (Math.PI / 180);
+        const x = cx + Math.cos(theta) * rCoils;
+        const y = cy + Math.sin(theta) * rCoils;
+
+        const ch = getChannelState(i, Math.floor(timeTick));
+        bx += ch.mag * Math.cos(theta);
+        by += ch.mag * Math.sin(theta);
+
+        // Coil Glow
+        if (ch.state > 0) {
+          tCtx.save();
+          tCtx.shadowBlur = ch.state === 4 ? 35 : 15;
+          tCtx.shadowColor = ch.color;
+          tCtx.beginPath();
+          tCtx.arc(x, y, 32, 0, Math.PI * 2);
+          tCtx.fillStyle = ch.color;
+          tCtx.fill();
+          tCtx.restore();
+        } else {
+          tCtx.beginPath();
+          tCtx.arc(x, y, 26, 0, Math.PI * 2);
+          tCtx.fillStyle = "#1c273c";
+          tCtx.fill();
+          tCtx.lineWidth = 2;
+          tCtx.strokeStyle = "#334155";
+          tCtx.stroke();
+        }
+
+        // Coil Label
+        tCtx.fillStyle = ch.state > 0 ? "#041017" : "#94a3b8";
+        tCtx.font = "bold 16px monospace";
+        tCtx.textAlign = "center";
+        tCtx.textBaseline = "middle";
+        tCtx.fillText(`P${PINS[i]}`, x, y - 6);
+        tCtx.font = "12px monospace";
+        tCtx.fillText(NAMES[i], x, y + 10);
+      }
+
+      // Magnetic Vector Vortex Arrow
+      const bMag = Math.sqrt(bx * bx + by * by);
+      const bAngle = Math.atan2(by, bx);
+
+      // Track rotations
+      let dTheta = bAngle - lastAngle;
+      if (dTheta < -Math.PI) dTheta += Math.PI * 2;
+      if (dTheta > Math.PI) dTheta -= Math.PI * 2;
+      totalRotations += dTheta / (Math.PI * 2);
+      lastAngle = bAngle;
+
+      tCtx.save();
+      tCtx.translate(cx, cy);
+      tCtx.rotate(bAngle);
+
+      // Vortex Needle
+      tCtx.beginPath();
+      tCtx.moveTo(0, 0);
+      tCtx.lineTo(rInner - 30, 0);
+      tCtx.lineWidth = 8;
+      tCtx.strokeStyle = "#00f0ff";
+      tCtx.shadowBlur = 20;
+      tCtx.shadowColor = "#00f0ff";
+      tCtx.stroke();
+
+      // Needle Head
+      tCtx.beginPath();
+      tCtx.moveTo(rInner - 30, -12);
+      tCtx.lineTo(rInner - 10, 0);
+      tCtx.lineTo(rInner - 30, 12);
+      tCtx.fillStyle = "#00f0ff";
+      tCtx.fill();
+          // Center Hub
+      tCtx.beginPath();
+      tCtx.arc(0, 0, 16, 0, Math.PI * 2);
+      tCtx.fillStyle = "#00f0ff";
+      tCtx.fill();
+      tCtx.restore();
+
+      // Update telemetry readouts
+      document.getElementById("valFlux").innerText = (bMag * 0.42).toFixed(3) + " T";
+      let deg = (bAngle * 180 / Math.PI + 90 + 360) % 360;
+      document.getElementById("valAngle").innerText = deg.toFixed(1) + "°";
+      document.getElementById("rotationRate").innerText = (Math.abs(totalRotations * 60) % 50000).toFixed(0) + " RPM";
+    }
+
+    function drawScope() {
+      const w = scopeCanvas.width;
+      const h = scopeCanvas.height;
+      sCtx.clearRect(0, 0, w, h);
+
+      const rowH = h / CHANNELS;
+      const timeWindow = 140; // nanoseconds visible
+
+      for (let ch = 0; ch < CHANNELS; ch++) {
+        const yBase = ch * rowH + rowH / 2;
+
+        // Channel Label
+        sCtx.fillStyle = "#64748b";
+        sCtx.font = "12px monospace";
+        sCtx.textAlign = "left";
+        sCtx.fillText(`CH${ch+1} (P${PINS[ch]})`, 10, yBase + 4);
+
+        // Grid line
+        sCtx.strokeStyle = "#131c2e";
+        sCtx.lineWidth = 1;
+        sCtx.beginPath();
+        sCtx.moveTo(120, yBase);
+        sCtx.lineTo(w, yBase);
+        sCtx.stroke();
+
+        // Waveform trace
+        sCtx.beginPath();
+        const startT = Math.floor(timeTick) - timeWindow;
+        for (let x = 120; x < w; x++) {
+          const sampleT = startT + Math.floor(((x - 120) / (w - 120)) * timeWindow);
+          const st = getChannelState(ch, sampleT);
+          const yOff = st.state === 4 ? -12 : (st.state === 1 ? -8 : (st.state === 2 ? -4 : 0));
+          if (x === 120) {
+            sCtx.moveTo(x, yBase + yOff);
+          } else {
+            sCtx.lineTo(x, yBase + yOff);
+          }
+        }
+        sCtx.strokeStyle = ch % 2 === 0 ? "#00f0ff" : "#38bdf8";
+        sCtx.lineWidth = 2;
+        sCtx.stroke();
+      }
+
+      // Cursor line
+      sCtx.strokeStyle = "rgba(245, 158, 11, 0.7)";
+      sCtx.lineWidth = 1.5;
+      sCtx.setLineDash([4, 4]);
+      sCtx.beginPath();
+      sCtx.moveTo(w - 60, 0);
+      sCtx.lineTo(w - 60, h);
+      sCtx.stroke();
+      sCtx.setLineDash([]);
+
+      document.getElementById("cycleTime").innerText = `T: ${Math.floor(timeTick)} ns`;
+    }
+
+    function loop() {
+      if (isRunning) {
+        timeTick += 0.8 * simSpeed;
+      }
+      drawToroid();
+      drawScope();
+      requestAnimationFrame(loop);
+    }
+
+    document.getElementById("btnPlay").onclick = () => {
+      isRunning = !isRunning;
+      document.getElementById("btnPlay").innerText = isRunning ? "PAUSE" : "RESUME";
+    };
+
+    document.getElementById("btnChord").onclick = () => {
+      chordEnabled = !chordEnabled;
+      document.getElementById("btnChord").style.borderColor = chordEnabled ? "var(--cyan)" : "var(--card-border)";
+      document.getElementById("btnChord").style.color = chordEnabled ? "var(--cyan)" : "var(--text-muted)";
+    };
+
+    document.getElementById("speedSlider").oninput = (e) => {
+      simSpeed = parseFloat(e.target.value);
+      document.getElementById("speedDisplay").innerText = simSpeed.toFixed(1) + "x";
+    };
+
+    document.getElementById("tickSlider").oninput = (e) => {
+      baseTicks = parseInt(e.target.value);
+    };
+
+    requestAnimationFrame(loop);
+  </script>
+</body>
+</html>
