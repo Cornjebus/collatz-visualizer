@@ -1,0 +1,6 @@
+services:
+  - type: static_site
+    name: collatz-visualizer
+    env: static
+    buildCommand: ""
+    staticPublishPath: .
