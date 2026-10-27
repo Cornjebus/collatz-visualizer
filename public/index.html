@@ -123,9 +123,10 @@
     canvas#toroidCanvas {
       width: 400px;
       height: 400px;
-      border-radius: 50%;
+      border-radius: 12px;
       background: radial-gradient(circle, #0e1726 0%, #080c14 70%);
       box-shadow: inset 0 0 40px rgba(0,0,0,0.8);
+      touch-action: none;
     }
     .stats-row {
       display: grid;
@@ -722,67 +723,137 @@ void loop() {
       return { state: 0, label: "0", color: "#1f293d", mag: 0.0 };
     }
 
+    // --- Toroidal chamber projection (8-fold, tiltable) ---
+    // Ring is drawn in 3D: major radius R, tube radius r, tilted about X by `tilt`.
+    // Depth (z) drives scale + alpha so the far side of the ring reads as behind.
+    const TORUS_R = 210;
+    const TORUS_r = 62;
+    let tilt = 1.02;              // radians; ~58 deg
+    let dragging = false;
+    let lastMouseY = 0;
+
+    function project3D(x, y, z, cx, cy) {
+      const cosT = Math.cos(tilt), sinT = Math.sin(tilt);
+      const y1 = y * cosT - z * sinT;
+      const z1 = y * sinT + z * cosT;
+      const persp = 620 / (620 + z1);
+      return { x: cx + x * persp, y: cy + y1 * persp, z: z1, persp: persp };
+    }
+
     function drawToroid() {
       const w = toroidCanvas.width;
       const h = toroidCanvas.height;
       const cx = w / 2;
       const cy = h / 2;
-      const rOuter = 280;
-      const rInner = 160;
-      const rCoils = 220;
 
       tCtx.clearRect(0, 0, w, h);
 
-      // Core Ring
-      tCtx.beginPath();
-      tCtx.arc(cx, cy, rOuter, 0, Math.PI * 2);
-      tCtx.arc(cx, cy, rInner, 0, Math.PI * 2, true);
-      tCtx.fillStyle = "#162032";
-      tCtx.fill();
-      tCtx.lineWidth = 4;
-      tCtx.strokeStyle = "#27354f";
-      tCtx.stroke();
+      const t = Math.floor(timeTick);
+
+      // --- Back half of the tube (z > 0), drawn first ---
+      const STEPS = 160;
+      for (let pass = 0; pass < 2; pass++) {
+        for (let s = 0; s < STEPS; s++) {
+          const u = (s / STEPS) * Math.PI * 2;
+          const x = Math.cos(u) * TORUS_R;
+          const y = Math.sin(u) * TORUS_R;
+          const p = project3D(x, y, 0, cx, cy);
+          if (pass === 0 && p.z < 0) continue;
+          if (pass === 1 && p.z >= 0) continue;
+
+          // Tube cross-section as a projected ellipse
+          const tubeW = TORUS_r * p.persp;
+          const depthFade = 0.35 + 0.65 * (1 - (p.z / TORUS_R + 1) / 2);
+
+          tCtx.beginPath();
+          tCtx.ellipse(p.x, p.y, tubeW * 0.55, tubeW, Math.atan2(p.y - cy, p.x - cx) + Math.PI / 2, 0, Math.PI * 2);
+          tCtx.fillStyle = pass === 0 ? `rgba(20,30,48,${depthFade})` : `rgba(26,38,60,${depthFade})`;
+          tCtx.fill();
+          tCtx.lineWidth = 1;
+          tCtx.strokeStyle = `rgba(45,62,92,${depthFade * 0.9})`;
+          tCtx.stroke();
+        }
+      }
+
+      // --- Core flux path (the ring centreline) ---
+      for (let pass = 0; pass < 2; pass++) {
+        tCtx.beginPath();
+        let started = false;
+        for (let s = 0; s <= STEPS; s++) {
+          const u = (s / STEPS) * Math.PI * 2;
+          const p = project3D(Math.cos(u) * TORUS_R, Math.sin(u) * TORUS_R, 0, cx, cy);
+          if (pass === 0 && p.z < 0) { started = false; continue; }
+          if (pass === 1 && p.z >= 0) { started = false; continue; }
+          if (!started) { tCtx.moveTo(p.x, p.y); started = true; } else { tCtx.lineTo(p.x, p.y); }
+        }
+        tCtx.lineWidth = 2;
+        tCtx.strokeStyle = pass === 0 ? "rgba(39,53,79,0.55)" : "rgba(56,76,110,0.9)";
+        tCtx.stroke();
+      }
+
+      // --- Collatz 4-2-1-0 wavefront travelling around the ring ---
+      if (chordEnabled) {
+        const CYCLE = 240;
+        const head = (t % CYCLE) / CYCLE;
+        for (let k = 0; k < 26; k++) {
+          const u = (head - k * 0.012) * Math.PI * 2;
+          const p = project3D(Math.cos(u) * TORUS_R, Math.sin(u) * TORUS_R, 0, cx, cy);
+          const fade = 1 - k / 26;
+          tCtx.beginPath();
+          tCtx.arc(p.x, p.y, 3 + fade * 4, 0, Math.PI * 2);
+          tCtx.fillStyle = `rgba(0,240,255,${fade * 0.5})`;
+          tCtx.fill();
+        }
+      }
+
+      // --- Coils, depth-sorted far to near ---
+      const coils = [];
+      for (let i = 0; i < CHANNELS; i++) {
+        const theta = (i * 45 - 90) * (Math.PI / 180);
+        const p = project3D(Math.cos(theta) * TORUS_R, Math.sin(theta) * TORUS_R, 0, cx, cy);
+        coils.push({ i: i, theta: theta, p: p });
+      }
+      coils.sort((a, b) => b.p.z - a.p.z);
 
       let bx = 0, by = 0;
 
-      // Draw 8 Coils at 45 degrees
-      for (let i = 0; i < CHANNELS; i++) {
-        const theta = (i * 45 - 90) * (Math.PI / 180);
-        const x = cx + Math.cos(theta) * rCoils;
-        const y = cy + Math.sin(theta) * rCoils;
-
-        const ch = getChannelState(i, Math.floor(timeTick));
+      for (const c of coils) {
+        const i = c.i, theta = c.theta, p = c.p;
+        const ch = getChannelState(i, t);
         bx += ch.mag * Math.cos(theta);
         by += ch.mag * Math.sin(theta);
 
-        // Coil Glow
-        if (ch.state > 0) {
-          tCtx.save();
-          tCtx.shadowBlur = ch.state === 4 ? 35 : 15;
-          tCtx.shadowColor = ch.color;
-          tCtx.beginPath();
-          tCtx.arc(x, y, 32, 0, Math.PI * 2);
-          tCtx.fillStyle = ch.color;
-          tCtx.fill();
-          tCtx.restore();
-        } else {
-          tCtx.beginPath();
-          tCtx.arc(x, y, 26, 0, Math.PI * 2);
-          tCtx.fillStyle = "#1c273c";
-          tCtx.fill();
-          tCtx.lineWidth = 2;
-          tCtx.strokeStyle = "#334155";
-          tCtx.stroke();
-        }
+        const rad = 30 * p.persp;
+        const dim = 0.45 + 0.55 * (1 - (p.z / TORUS_R + 1) / 2);
 
-        // Coil Label
+        // Coil body wrapped over the tube
+        tCtx.save();
+        tCtx.globalAlpha = dim;
+        if (ch.state > 0) {
+          tCtx.shadowBlur = (ch.state === 4 ? 40 : 18) * p.persp;
+          tCtx.shadowColor = ch.color;
+        }
+        tCtx.beginPath();
+        tCtx.ellipse(p.x, p.y, rad * 0.62, rad, theta + Math.PI / 2, 0, Math.PI * 2);
+        tCtx.fillStyle = ch.state > 0 ? ch.color : "#1c273c";
+        tCtx.fill();
+        tCtx.shadowBlur = 0;
+        tCtx.lineWidth = 2;
+        tCtx.strokeStyle = ch.state > 0 ? "rgba(255,255,255,0.5)" : "#334155";
+        tCtx.stroke();
+        tCtx.restore();
+
+        // Coil label
+        tCtx.save();
+        tCtx.globalAlpha = dim;
         tCtx.fillStyle = ch.state > 0 ? "#041017" : "#94a3b8";
-        tCtx.font = "bold 16px monospace";
+        tCtx.font = `bold ${Math.round(15 * p.persp)}px monospace`;
         tCtx.textAlign = "center";
         tCtx.textBaseline = "middle";
-        tCtx.fillText(`P${PINS[i]}`, x, y - 6);
-        tCtx.font = "12px monospace";
-        tCtx.fillText(NAMES[i], x, y + 10);
+        tCtx.fillText(`P${PINS[i]}`, p.x, p.y - 5);
+        tCtx.font = `${Math.round(11 * p.persp)}px monospace`;
+        tCtx.fillText(NAMES[i], p.x, p.y + 9);
+        tCtx.restore();
       }
 
       // Magnetic Vector Vortex Arrow
@@ -796,31 +867,37 @@ void loop() {
       totalRotations += dTheta / (Math.PI * 2);
       lastAngle = bAngle;
 
-      tCtx.save();
-      tCtx.translate(cx, cy);
-      tCtx.rotate(bAngle);
+      // Vortex needle lies in the ring plane, so project it
+      const needleLen = TORUS_R - TORUS_r - 18;
+      const tip = project3D(Math.cos(bAngle) * needleLen, Math.sin(bAngle) * needleLen, 0, cx, cy);
+      const hub = project3D(0, 0, 0, cx, cy);
 
-      // Vortex Needle
+      tCtx.save();
       tCtx.beginPath();
-      tCtx.moveTo(0, 0);
-      tCtx.lineTo(rInner - 30, 0);
-      tCtx.lineWidth = 8;
+      tCtx.moveTo(hub.x, hub.y);
+      tCtx.lineTo(tip.x, tip.y);
+      tCtx.lineWidth = 7;
       tCtx.strokeStyle = "#00f0ff";
       tCtx.shadowBlur = 20;
       tCtx.shadowColor = "#00f0ff";
       tCtx.stroke();
 
       // Needle Head
+      const back = project3D(Math.cos(bAngle) * (needleLen - 20), Math.sin(bAngle) * (needleLen - 20), 0, cx, cy);
+      const perp = bAngle + Math.PI / 2;
+      const w1 = project3D(Math.cos(back.x ? bAngle : bAngle) * (needleLen - 20) + Math.cos(perp) * 12, Math.sin(bAngle) * (needleLen - 20) + Math.sin(perp) * 12, 0, cx, cy);
+      const w2 = project3D(Math.cos(bAngle) * (needleLen - 20) - Math.cos(perp) * 12, Math.sin(bAngle) * (needleLen - 20) - Math.sin(perp) * 12, 0, cx, cy);
       tCtx.beginPath();
-      tCtx.moveTo(rInner - 30, -12);
-      tCtx.lineTo(rInner - 10, 0);
-      tCtx.lineTo(rInner - 30, 12);
+      tCtx.moveTo(tip.x, tip.y);
+      tCtx.lineTo(w1.x, w1.y);
+      tCtx.lineTo(w2.x, w2.y);
+      tCtx.closePath();
       tCtx.fillStyle = "#00f0ff";
       tCtx.fill();
 
       // Center Hub
       tCtx.beginPath();
-      tCtx.arc(0, 0, 16, 0, Math.PI * 2);
+      tCtx.arc(hub.x, hub.y, 15, 0, Math.PI * 2);
       tCtx.fillStyle = "#00f0ff";
       tCtx.fill();
       tCtx.restore();
@@ -912,6 +989,23 @@ void loop() {
     document.getElementById("tickSlider").oninput = (e) => {
       baseTicks = parseInt(e.target.value);
     };
+
+    // Drag the chamber to tilt the ring in 3D
+    toroidCanvas.addEventListener("mousedown", (e) => {
+      dragging = true;
+      lastMouseY = e.clientY;
+      toroidCanvas.style.cursor = "grabbing";
+    });
+    window.addEventListener("mouseup", () => {
+      dragging = false;
+      toroidCanvas.style.cursor = "grab";
+    });
+    window.addEventListener("mousemove", (e) => {
+      if (!dragging) return;
+      tilt = Math.max(0.12, Math.min(1.45, tilt + (e.clientY - lastMouseY) * 0.006));
+      lastMouseY = e.clientY;
+    });
+    toroidCanvas.style.cursor = "grab";
 
     // --- TAB 2: SPICE Transient Engine ---
     const spiceCanvas = document.getElementById("spiceCanvas");
